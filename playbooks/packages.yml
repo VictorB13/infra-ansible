@@ -1,0 +1,7 @@
+---
+# Run only the packages role (step 1 of node setup).
+- name: Install base packages on k3s node
+  hosts: k3s
+  become: true
+  roles:
+    - packages

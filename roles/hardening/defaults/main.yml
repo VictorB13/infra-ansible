@@ -1,0 +1,13 @@
+---
+# Host firewall hardening (iptables only — not ufw).
+# Manages INPUT allow-rules + policy. Leaves FORWARD ACCEPT for k3s/CNI.
+
+hardening_allowed_tcp_ports:
+  - 22    # SSH
+  - 80    # HTTP (Traefik)
+  - 443   # HTTPS (Traefik)
+
+hardening_allow_icmp: true
+
+# Persist rules across reboot (iptables-persistent / netfilter-persistent)
+hardening_persist: true

@@ -1,0 +1,98 @@
+---
+- name: Ensure UFW is disabled (we use iptables only)
+  ansible.builtin.systemd:
+    name: ufw
+    state: stopped
+    enabled: false
+  failed_when: false
+
+# --- IPv4 INPUT allow rules (appended; policy DROP catches the rest) ---
+
+- name: Allow loopback traffic (IPv4)
+  ansible.builtin.iptables:
+    chain: INPUT
+    in_interface: lo
+    jump: ACCEPT
+    comment: hardening-loopback
+
+- name: Allow established and related connections (IPv4)
+  ansible.builtin.iptables:
+    chain: INPUT
+    ctstate: ESTABLISHED,RELATED
+    jump: ACCEPT
+    comment: hardening-established
+
+- name: Allow ICMP echo-request (IPv4)
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: icmp
+    icmp_type: echo-request
+    jump: ACCEPT
+    comment: hardening-icmp
+  when: hardening_allow_icmp | bool
+
+- name: Allow TCP ports on INPUT (IPv4)
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "{{ item }}"
+    ctstate: NEW
+    jump: ACCEPT
+    comment: "hardening-tcp-{{ item }}"
+  loop: "{{ hardening_allowed_tcp_ports }}"
+
+- name: Set INPUT policy to DROP (IPv4)
+  ansible.builtin.iptables:
+    chain: INPUT
+    policy: DROP
+
+- name: Set FORWARD policy to ACCEPT (required for k3s/CNI)
+  ansible.builtin.iptables:
+    chain: FORWARD
+    policy: ACCEPT
+
+- name: Set OUTPUT policy to ACCEPT (IPv4)
+  ansible.builtin.iptables:
+    chain: OUTPUT
+    policy: ACCEPT
+
+# --- IPv6: deny inbound by default (avoid bypassing IPv4 firewall) ---
+
+- name: Allow loopback traffic (IPv6)
+  ansible.builtin.iptables:
+    ip_version: ipv6
+    chain: INPUT
+    in_interface: lo
+    jump: ACCEPT
+    comment: hardening-loopback-v6
+
+- name: Allow established and related connections (IPv6)
+  ansible.builtin.iptables:
+    ip_version: ipv6
+    chain: INPUT
+    ctstate: ESTABLISHED,RELATED
+    jump: ACCEPT
+    comment: hardening-established-v6
+
+- name: Set INPUT policy to DROP (IPv6)
+  ansible.builtin.iptables:
+    ip_version: ipv6
+    chain: INPUT
+    policy: DROP
+
+- name: Set FORWARD policy to ACCEPT (IPv6)
+  ansible.builtin.iptables:
+    ip_version: ipv6
+    chain: FORWARD
+    policy: ACCEPT
+
+- name: Set OUTPUT policy to ACCEPT (IPv6)
+  ansible.builtin.iptables:
+    ip_version: ipv6
+    chain: OUTPUT
+    policy: ACCEPT
+
+- name: Persist iptables rules
+  ansible.builtin.command: netfilter-persistent save
+  when: hardening_persist | bool
+  changed_when: true

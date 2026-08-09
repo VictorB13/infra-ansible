@@ -1,0 +1,26 @@
+---
+# Packages to install on the k3s node (Ubuntu).
+# Override via group_vars / extra-vars if needed.
+
+packages:
+  - curl
+  - wget
+  - ca-certificates
+  - apt-transport-https
+  - gnupg
+  - lsb-release
+  - software-properties-common
+  - python3
+  - jq
+  - git
+  - unzip
+  - vim
+  - htop
+  - iptables
+  - iptables-persistent
+  - netfilter-persistent
+  - nfs-common
+  - open-iscsi
+
+packages_upgrade: false
+packages_autoremove: true

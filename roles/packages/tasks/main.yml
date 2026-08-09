@@ -1,0 +1,35 @@
+---
+- name: Refresh apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Upgrade all packages
+  ansible.builtin.apt:
+    upgrade: dist
+  when: packages_upgrade | bool
+
+# Avoid interactive prompts when installing iptables-persistent
+- name: Preseed iptables-persistent
+  ansible.builtin.debconf:
+    name: "{{ item.name }}"
+    question: "{{ item.question }}"
+    value: "{{ item.value }}"
+    vtype: boolean
+  loop:
+    - name: iptables-persistent
+      question: iptables-persistent/autosave_v4
+      value: "true"
+    - name: iptables-persistent
+      question: iptables-persistent/autosave_v6
+      value: "true"
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name: "{{ packages }}"
+    state: present
+
+- name: Remove unused packages
+  ansible.builtin.apt:
+    autoremove: true
+  when: packages_autoremove | bool

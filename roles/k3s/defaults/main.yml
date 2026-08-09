@@ -1,0 +1,31 @@
+---
+# k3s single-node server defaults
+
+k3s_version: "v1.31.4+k3s1"
+
+# Official install script
+k3s_install_url: "https://get.k3s.io"
+
+# Install as a server (control-plane + worker on one node)
+k3s_server: true
+
+# Extra args passed to the k3s server process
+# --write-kubeconfig-mode 644 so non-root can read the system kubeconfig
+# Traefik stays enabled (serves 80/443 via the AWS SG)
+k3s_server_args:
+  - "--write-kubeconfig-mode=644"
+
+# Optional: public IP/DNS so the API cert matches if you ever tunnel remotely
+# Set via inventory / extra-vars, e.g. k3s_tls_san: "{{ ansible_host }}"
+k3s_tls_san: ""
+
+# Where kubeconfig lives on the node after install
+k3s_kubeconfig_src: /etc/rancher/k3s/k3s.yaml
+k3s_kubeconfig_dest: /home/ubuntu/.kube/config
+k3s_kubeconfig_owner: ubuntu
+k3s_kubeconfig_group: ubuntu
+
+# Wait for node Ready after install
+k3s_wait_for_node: true
+k3s_wait_retries: 30
+k3s_wait_delay: 10

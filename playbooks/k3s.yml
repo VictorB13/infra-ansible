@@ -1,0 +1,8 @@
+---
+# Run only the k3s role (step 2 of node setup).
+# Prefer running packages.yml first on a fresh node.
+- name: Install and configure k3s single-node server
+  hosts: k3s
+  become: true
+  roles:
+    - k3s
