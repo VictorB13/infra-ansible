@@ -2,6 +2,7 @@
 *.retry
 .ansible/
 ansible.log
+inventory/ci.yml
 
 # Inventory overrides / secrets (keep example inventory tracked)
 inventory/hosts.ini
