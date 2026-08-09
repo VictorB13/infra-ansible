@@ -21,6 +21,7 @@ packages:
   - netfilter-persistent
   - nfs-common
   - open-iscsi
+  - fail2ban
 
 packages_upgrade: false
 packages_autoremove: true

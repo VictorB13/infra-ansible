@@ -7,14 +7,15 @@ Configure the EC2 instance as a single-node k3s cluster (Configuration as Code).
 - Ansible
 - k3s
 - iptables (host hardening, not ufw)
+- fail2ban (SSH brute-force protection)
 
 ## Roles
 
 | Role | Purpose |
 |---|---|
-| `packages` | Install base OS packages |
+| `packages` | Install base OS packages (incl. fail2ban) |
 | `k3s` | Install and configure single-node k3s server |
-| `hardening` | Host firewall with iptables |
+| `hardening` | iptables firewall + fail2ban SSH jail |
 
 ## Run manually
 

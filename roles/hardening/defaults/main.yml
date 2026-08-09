@@ -4,10 +4,17 @@
 
 hardening_allowed_tcp_ports:
   - 22    # SSH
-  - 80    # HTTP (Traefik)
-  - 443   # HTTPS (Traefik)
+  - 80    # HTTP 
+  - 443   # HTTPS 
 
 hardening_allow_icmp: true
 
 # Persist rules across reboot (iptables-persistent / netfilter-persistent)
 hardening_persist: true
+
+# fail2ban — ban hosts that fail SSH auth repeatedly
+hardening_fail2ban: true
+hardening_fail2ban_bantime: "1h"
+hardening_fail2ban_findtime: "10m"
+hardening_fail2ban_maxretry: 5
+hardening_fail2ban_ssh_port: 22

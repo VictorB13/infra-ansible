@@ -96,3 +96,7 @@
   ansible.builtin.command: netfilter-persistent save
   when: hardening_persist | bool
   changed_when: true
+
+- name: Configure fail2ban
+  ansible.builtin.import_tasks: fail2ban.yml
+  when: hardening_fail2ban | bool
