@@ -17,35 +17,20 @@ Configure the EC2 instance as a single-node k3s cluster (Configuration as Code).
 | `k3s` | Install and configure single-node k3s server |
 | `hardening` | iptables firewall + fail2ban SSH jail |
 
-## Run manually
+## How it runs
 
-1. Set the node IP and SSH key:
+**Only via GitHub Actions** — the `infra-terraform` **Build** workflow (manual trigger from the GitHub UI):
 
-```bash
-export K3S_NODE_IP=<ec2-public-ip>
-export SSH_PRIVATE_KEY_PATH=~/.ssh/id_rsa
-```
+1. Terraform apply → EC2 created  
+2. Workflow writes an inventory file with the instance public IP (`/tmp/k3s-inventory.yml`)  
+3. Runs `ansible-playbook playbooks/site.yml -i /tmp/k3s-inventory.yml`  
 
-2. Run the full playbook:
+Order: `packages` → `k3s` → `hardening`
 
-```bash
-ansible-playbook playbooks/site.yml
-```
-
-Or run roles one by one:
-
-```bash
-ansible-playbook playbooks/packages.yml
-ansible-playbook playbooks/k3s.yml
-ansible-playbook playbooks/hardening.yml
-```
-
-## Order
-
-`packages` → `k3s` → `hardening`
+There is no supported local/manual Ansible run path.
 
 ## Notes
 
-- Inventory: `inventory/hosts.yml` (host comes from `K3S_NODE_IP`)
-- SSH user: `ubuntu` (Ubuntu AMI from Terraform)
-- This repo is meant to be called from the `infra-terraform` **Build** job after `terraform apply`
+- Host inventory is generated in CI at `/tmp/k3s-inventory.yml` (not in this repo)  
+- SSH user: `ubuntu`  
+- SSH key comes from `infra-terraform` secrets (`SSH_PRIVATE_KEY`)

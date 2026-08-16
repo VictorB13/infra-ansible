@@ -1,9 +1,0 @@
----
-# Run only the hardening role (step 3 of node setup).
-# Prefer running after packages (+ k3s) so iptables-persistent is present
-# and k3s/CNI can keep using FORWARD.
-- name: Harden k3s node with iptables
-  hosts: k3s
-  become: true
-  roles:
-    - hardening

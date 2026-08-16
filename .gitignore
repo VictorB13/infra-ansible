@@ -2,27 +2,20 @@
 *.retry
 .ansible/
 ansible.log
-inventory/ci.yml
 
-# Inventory overrides / secrets (keep example inventory tracked)
-inventory/hosts.ini
-inventory/*.secret.yml
-group_vars/*/vault.yml
-host_vars/*/vault.yml
+# Secrets / keys
 *.vault
 *.key
 *.pem
 id_rsa
 id_rsa.pub
 
-# Python / molecule (if added later)
+# Python
 __pycache__/
 *.pyc
 .venv/
 venv/
 .cache/
-.molecule/
-.pytest_cache/
 
 # IDE / OS
 .vscode/
