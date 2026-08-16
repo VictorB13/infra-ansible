@@ -1,0 +1,120 @@
+---
+- name: Ensure kubectl wrapper exists (k3s)
+  ansible.builtin.file:
+    src: /usr/local/bin/k3s
+    dest: /usr/local/bin/kubectl
+    state: link
+    force: true
+  failed_when: false
+
+- name: Resolve ArgoCD public hostname
+  ansible.builtin.set_fact:
+    argocd_host: "argocd.{{ k3s_tls_san | default(ansible_host) }}.sslip.io"
+  when: argocd_host is not defined
+
+- name: Create ArgoCD namespace
+  ansible.builtin.command: k3s kubectl create namespace {{ argocd_namespace }}
+  register: argocd_ns
+  changed_when: argocd_ns.rc == 0
+  failed_when: argocd_ns.rc not in [0, 1]
+
+- name: Check if ArgoCD server deploy exists
+  ansible.builtin.command: k3s kubectl -n {{ argocd_namespace }} get deploy argocd-server
+  register: argocd_server_deploy
+  changed_when: false
+  failed_when: false
+
+- name: Install ArgoCD manifests
+  ansible.builtin.command: >
+    k3s kubectl apply -n {{ argocd_namespace }} -f {{ argocd_manifest_url }}
+  when: argocd_server_deploy.rc != 0
+
+- name: Wait until ArgoCD server deployment is Available
+  ansible.builtin.command: >
+    k3s kubectl -n {{ argocd_namespace }} wait --for=condition=Available deploy/argocd-server --timeout=600s
+  changed_when: false
+
+- name: Wait until ArgoCD repo-server is Available
+  ansible.builtin.command: >
+    k3s kubectl -n {{ argocd_namespace }} wait --for=condition=Available deploy/argocd-repo-server --timeout=600s
+  changed_when: false
+
+- name: Wait until ArgoCD redis is Available
+  ansible.builtin.command: >
+    k3s kubectl -n {{ argocd_namespace }} wait --for=condition=Available deploy/argocd-redis --timeout=300s
+  changed_when: false
+  failed_when: false
+
+# TLS terminates at Traefik Ingress; ArgoCD serves HTTP behind it
+- name: Enable ArgoCD server insecure mode (TLS at Ingress)
+  ansible.builtin.shell: |
+    k3s kubectl -n {{ argocd_namespace }} patch configmap argocd-cmd-params-cm \
+      --type merge \
+      -p '{"data":{"server.insecure":"true"}}'
+  register: argocd_insecure_patch
+  changed_when: argocd_insecure_patch.rc == 0
+
+- name: Restart ArgoCD server to apply insecure mode
+  ansible.builtin.command: >
+    k3s kubectl -n {{ argocd_namespace }} rollout restart deploy/argocd-server
+  when: argocd_insecure_patch.rc == 0
+
+- name: Wait for ArgoCD server rollout after insecure patch
+  ansible.builtin.command: >
+    k3s kubectl -n {{ argocd_namespace }} rollout status deploy/argocd-server --timeout=300s
+  changed_when: false
+
+- name: Apply GitOps root Application (app-of-apps)
+  ansible.builtin.command: >
+    k3s kubectl apply -f {{ argocd_root_app_url }}
+  register: argocd_root_app
+  changed_when: "'created' in argocd_root_app.stdout or 'configured' in argocd_root_app.stdout"
+
+- name: Wait for cert-manager ClusterIssuer (from GitOps, best-effort)
+  ansible.builtin.command: >
+    k3s kubectl wait --for=condition=Ready clusterissuer/{{ argocd_cluster_issuer }} --timeout=300s
+  register: argocd_issuer_wait
+  changed_when: false
+  failed_when: false
+  when: argocd_ingress_enabled | bool
+
+- name: Render ArgoCD Ingress
+  ansible.builtin.template:
+    src: ingress.yaml.j2
+    dest: /tmp/argocd-ingress.yaml
+    mode: "0644"
+  when: argocd_ingress_enabled | bool
+
+- name: Apply ArgoCD Ingress (HTTPS via Traefik + cert-manager)
+  ansible.builtin.command: k3s kubectl apply -f /tmp/argocd-ingress.yaml
+  when: argocd_ingress_enabled | bool
+
+- name: Read ArgoCD initial admin password
+  ansible.builtin.command: >
+    k3s kubectl -n {{ argocd_namespace }} get secret argocd-initial-admin-secret
+    -o jsonpath={.data.password}
+  register: argocd_admin_b64
+  changed_when: false
+
+- name: Decode ArgoCD admin password
+  ansible.builtin.set_fact:
+    argocd_admin_password: "{{ argocd_admin_b64.stdout | b64decode }}"
+    argocd_url: "https://{{ argocd_host }}"
+
+- name: Persist ArgoCD URL for the Build job
+  ansible.builtin.copy:
+    content: "{{ argocd_url }}\n"
+    dest: /home/ubuntu/argocd-url.txt
+    owner: ubuntu
+    group: ubuntu
+    mode: "0644"
+  when: argocd_ingress_enabled | bool
+
+- name: Show ArgoCD access hint
+  ansible.builtin.debug:
+    msg:
+      - "ArgoCD installed in namespace {{ argocd_namespace }}"
+      - "Login user: admin"
+      - "URL: {{ argocd_url }}"
+      - "TLS cert may take a few minutes after cert-manager syncs (Let's Encrypt)."
+      - "Root app applied from {{ argocd_root_app_url }}"

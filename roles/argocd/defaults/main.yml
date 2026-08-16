@@ -1,0 +1,20 @@
+---
+argocd_namespace: argocd
+
+# Pin a known release for reproducibility
+argocd_manifest_url: "https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.3/manifests/install.yaml"
+
+# GitOps repo (public) — root Application bootstrap
+argocd_gitops_repo: "https://github.com/VictorB13/infra-gitops.git"
+argocd_root_app_url: "https://raw.githubusercontent.com/VictorB13/infra-gitops/main/apps/root-app.yaml"
+
+# Public UI via Traefik Ingress + TLS (cert-manager)
+# Host uses sslip.io so <ip>.sslip.io resolves to the EC2 without buying a domain.
+# Override with -e argocd_host=argocd.example.com when you have real DNS.
+argocd_ingress_enabled: true
+argocd_ingress_class: traefik
+argocd_cluster_issuer: letsencrypt-prod
+argocd_tls_secret: argocd-server-tls
+
+argocd_wait_retries: 60
+argocd_wait_delay: 10

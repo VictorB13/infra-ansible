@@ -8,6 +8,7 @@ Configure the EC2 instance as a single-node k3s cluster (Configuration as Code).
 - k3s
 - iptables (host hardening, not ufw)
 - fail2ban (SSH brute-force protection)
+- ArgoCD (GitOps)
 
 ## Roles
 
@@ -16,6 +17,7 @@ Configure the EC2 instance as a single-node k3s cluster (Configuration as Code).
 | `packages` | Install base OS packages (incl. fail2ban) |
 | `k3s` | Install and configure single-node k3s server |
 | `hardening` | iptables firewall + fail2ban SSH jail |
+| `argocd` | Install ArgoCD + apply `infra-gitops` root Application |
 
 ## How it runs
 
@@ -25,7 +27,7 @@ Configure the EC2 instance as a single-node k3s cluster (Configuration as Code).
 2. Workflow writes an inventory file with the instance public IP (`/tmp/k3s-inventory.yml`)  
 3. Runs `ansible-playbook playbooks/site.yml -i /tmp/k3s-inventory.yml`  
 
-Order: `packages` → `k3s` → `hardening`
+Order: `packages` → `k3s` → `hardening` → `argocd`
 
 There is no supported local/manual Ansible run path.
 
@@ -33,4 +35,6 @@ There is no supported local/manual Ansible run path.
 
 - Host inventory is generated in CI at `/tmp/k3s-inventory.yml` (not in this repo)  
 - SSH user: `ubuntu`  
-- SSH key comes from `infra-terraform` secrets (`SSH_PRIVATE_KEY`)
+- SSH key comes from `infra-terraform` secrets (`SSH_PRIVATE_KEY`)  
+- ArgoCD admin password is stored in AWS SSM by the Build job (`/todo-app/argocd_admin_password`)
+- ArgoCD UI: Ingress + HTTPS at `https://argocd.<ec2-ip>.sslip.io` (also `/todo-app/argocd_url` in SSM)

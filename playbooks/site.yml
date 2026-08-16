@@ -1,9 +1,10 @@
 ---
-# Full node setup: packages → k3s → hardening
-- name: Provision single-node k3s cluster
+# Full node setup: packages → k3s → hardening → ArgoCD + root-app
+- name: Provision single-node k3s cluster with ArgoCD
   hosts: k3s
   become: true
   roles:
     - packages
     - k3s
     - hardening
+    - argocd
