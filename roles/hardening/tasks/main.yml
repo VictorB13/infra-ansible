@@ -1,7 +1,5 @@
 ---
-# Host firewall (iptables). Allow rules are INSERTED at the top of INPUT so
-# they win over any k3s/CNI noise. Policy DROP comes last.
-#
+# Host firewall (iptables)
 # All iptables calls use -w (wait for xtables lock) because k3s holds the
 # lock during CNI setup — without -w Ansible races and fails.
 # After firewall changes we reset the Ansible SSH connection.
