@@ -1,4 +1,9 @@
 ---
+# Host firewall (iptables). Allow rules are INSERTED at the top of INPUT so
+# they win over any k3s/CNI noise. Policy DROP comes last. After changing
+# the firewall we reset the Ansible SSH connection so ControlPersist does
+# not die on the next task (that was the Build failure mode).
+
 - name: Ensure UFW is disabled (we use iptables only)
   ansible.builtin.systemd:
     name: ufw
@@ -6,28 +11,16 @@
     enabled: false
   failed_when: false
 
-# --- IPv4 INPUT allow rules (appended; policy DROP catches the rest) ---
-
-- name: Allow loopback traffic (IPv4)
-  ansible.builtin.iptables:
-    chain: INPUT
-    in_interface: lo
-    jump: ACCEPT
-    comment: hardening-loopback
-
-- name: Allow established and related connections (IPv4)
-  ansible.builtin.iptables:
-    chain: INPUT
-    ctstate: ESTABLISHED,RELATED
-    jump: ACCEPT
-    comment: hardening-established
-
+# Insert at the top in reverse priority so final order is:
+#   loopback → established → SSH/HTTP/HTTPS → ICMP → (policy DROP)
 - name: Allow ICMP echo-request (IPv4)
   ansible.builtin.iptables:
     chain: INPUT
     protocol: icmp
     icmp_type: echo-request
     jump: ACCEPT
+    action: insert
+    rule_num: 1
     comment: hardening-icmp
   when: hardening_allow_icmp | bool
 
@@ -36,17 +29,36 @@
     chain: INPUT
     protocol: tcp
     destination_port: "{{ item }}"
-    ctstate: NEW
     jump: ACCEPT
+    action: insert
+    rule_num: 1
     comment: "hardening-tcp-{{ item }}"
-  loop: "{{ hardening_allowed_tcp_ports }}"
+  loop: "{{ hardening_allowed_tcp_ports | reverse | list }}"
+
+- name: Allow established and related connections (IPv4)
+  ansible.builtin.iptables:
+    chain: INPUT
+    ctstate: ESTABLISHED,RELATED
+    jump: ACCEPT
+    action: insert
+    rule_num: 1
+    comment: hardening-established
+
+- name: Allow loopback traffic (IPv4)
+  ansible.builtin.iptables:
+    chain: INPUT
+    in_interface: lo
+    jump: ACCEPT
+    action: insert
+    rule_num: 1
+    comment: hardening-loopback
 
 - name: Set INPUT policy to DROP (IPv4)
   ansible.builtin.iptables:
     chain: INPUT
     policy: DROP
 
-- name: Set FORWARD policy to ACCEPT (required for k3s/CNI)
+- name: Set FORWARD policy to ACCEPT (required for k3s)
   ansible.builtin.iptables:
     chain: FORWARD
     policy: ACCEPT
@@ -58,21 +70,25 @@
 
 # --- IPv6: deny inbound by default (avoid bypassing IPv4 firewall) ---
 
-- name: Allow loopback traffic (IPv6)
-  ansible.builtin.iptables:
-    ip_version: ipv6
-    chain: INPUT
-    in_interface: lo
-    jump: ACCEPT
-    comment: hardening-loopback-v6
-
 - name: Allow established and related connections (IPv6)
   ansible.builtin.iptables:
     ip_version: ipv6
     chain: INPUT
     ctstate: ESTABLISHED,RELATED
     jump: ACCEPT
+    action: insert
+    rule_num: 1
     comment: hardening-established-v6
+
+- name: Allow loopback traffic (IPv6)
+  ansible.builtin.iptables:
+    ip_version: ipv6
+    chain: INPUT
+    in_interface: lo
+    jump: ACCEPT
+    action: insert
+    rule_num: 1
+    comment: hardening-loopback-v6
 
 - name: Set INPUT policy to DROP (IPv6)
   ansible.builtin.iptables:
@@ -96,6 +112,17 @@
   ansible.builtin.command: netfilter-persistent save
   when: hardening_persist | bool
   changed_when: true
+
+# Firewall just changed — drop ControlMaster and open a fresh SSH session
+# before any further tasks (fail2ban apt, etc.).
+- name: Reset SSH connection after firewall change
+  ansible.builtin.meta: reset_connection
+
+- name: Wait for SSH after firewall change
+  ansible.builtin.wait_for_connection:
+    connect_timeout: 10
+    delay: 2
+    timeout: 60
 
 - name: Configure fail2ban
   ansible.builtin.import_tasks: fail2ban.yml

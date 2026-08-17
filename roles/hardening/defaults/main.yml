@@ -2,10 +2,12 @@
 # Host firewall hardening (iptables only — not ufw).
 # Manages INPUT allow-rules + policy. Leaves FORWARD ACCEPT for k3s/CNI.
 
+# Allowed on INPUT (all TCP states — not only NEW — so Ansible SSH
+# ControlPersist / multiplexed sessions keep working after policy DROP).
 hardening_allowed_tcp_ports:
   - 22    # SSH
-  - 80    # HTTP 
-  - 443   # HTTPS 
+  - 80    # HTTP
+  - 443   # HTTPS
 
 hardening_allow_icmp: true
 
