@@ -1,8 +1,10 @@
 ---
 # Host firewall (iptables). Allow rules are INSERTED at the top of INPUT so
-# they win over any k3s/CNI noise. Policy DROP comes last. After changing
-# the firewall we reset the Ansible SSH connection so ControlPersist does
-# not die on the next task (that was the Build failure mode).
+# they win over any k3s/CNI noise. Policy DROP comes last.
+#
+# All iptables calls use -w (wait for xtables lock) because k3s holds the
+# lock during CNI setup — without -w Ansible races and fails.
+# After firewall changes we reset the Ansible SSH connection.
 
 - name: Ensure UFW is disabled (we use iptables only)
   ansible.builtin.systemd:
@@ -11,110 +13,100 @@
     enabled: false
   failed_when: false
 
+- name: Brief pause so k3s can finish initial iptables programming
+  ansible.builtin.pause:
+    seconds: 8
+
 # Insert at the top in reverse priority so final order is:
 #   loopback → established → SSH/HTTP/HTTPS → ICMP → (policy DROP)
+
 - name: Allow ICMP echo-request (IPv4)
-  ansible.builtin.iptables:
-    chain: INPUT
-    protocol: icmp
-    icmp_type: echo-request
-    jump: ACCEPT
-    action: insert
-    rule_num: 1
-    comment: hardening-icmp
+  ansible.builtin.shell: |
+    set -e
+    iptables -w 60 -C INPUT -p icmp --icmp-type echo-request -j ACCEPT -m comment --comment hardening-icmp 2>/dev/null \
+      || iptables -w 60 -I INPUT 1 -p icmp --icmp-type echo-request -j ACCEPT -m comment --comment hardening-icmp
+  args:
+    executable: /bin/bash
+  changed_when: true
   when: hardening_allow_icmp | bool
 
 - name: Allow TCP ports on INPUT (IPv4)
-  ansible.builtin.iptables:
-    chain: INPUT
-    protocol: tcp
-    destination_port: "{{ item }}"
-    jump: ACCEPT
-    action: insert
-    rule_num: 1
-    comment: "hardening-tcp-{{ item }}"
+  ansible.builtin.shell: |
+    set -e
+    iptables -w 60 -C INPUT -p tcp --dport {{ item }} -j ACCEPT -m comment --comment hardening-tcp-{{ item }} 2>/dev/null \
+      || iptables -w 60 -I INPUT 1 -p tcp --dport {{ item }} -j ACCEPT -m comment --comment hardening-tcp-{{ item }}
+  args:
+    executable: /bin/bash
   loop: "{{ hardening_allowed_tcp_ports | reverse | list }}"
+  changed_when: true
 
 - name: Allow established and related connections (IPv4)
-  ansible.builtin.iptables:
-    chain: INPUT
-    ctstate: ESTABLISHED,RELATED
-    jump: ACCEPT
-    action: insert
-    rule_num: 1
-    comment: hardening-established
+  ansible.builtin.shell: |
+    set -e
+    iptables -w 60 -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT -m comment --comment hardening-established 2>/dev/null \
+      || iptables -w 60 -I INPUT 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT -m comment --comment hardening-established
+  args:
+    executable: /bin/bash
+  changed_when: true
 
 - name: Allow loopback traffic (IPv4)
-  ansible.builtin.iptables:
-    chain: INPUT
-    in_interface: lo
-    jump: ACCEPT
-    action: insert
-    rule_num: 1
-    comment: hardening-loopback
+  ansible.builtin.shell: |
+    set -e
+    iptables -w 60 -C INPUT -i lo -j ACCEPT -m comment --comment hardening-loopback 2>/dev/null \
+      || iptables -w 60 -I INPUT 1 -i lo -j ACCEPT -m comment --comment hardening-loopback
+  args:
+    executable: /bin/bash
+  changed_when: true
 
 - name: Set INPUT policy to DROP (IPv4)
-  ansible.builtin.iptables:
-    chain: INPUT
-    policy: DROP
+  ansible.builtin.command: iptables -w 60 -P INPUT DROP
+  changed_when: true
 
-- name: Set FORWARD policy to ACCEPT (required for k3s)
-  ansible.builtin.iptables:
-    chain: FORWARD
-    policy: ACCEPT
+- name: Set FORWARD policy to ACCEPT (required for k3s/CNI)
+  ansible.builtin.command: iptables -w 60 -P FORWARD ACCEPT
+  changed_when: true
 
 - name: Set OUTPUT policy to ACCEPT (IPv4)
-  ansible.builtin.iptables:
-    chain: OUTPUT
-    policy: ACCEPT
+  ansible.builtin.command: iptables -w 60 -P OUTPUT ACCEPT
+  changed_when: true
 
 # --- IPv6: deny inbound by default (avoid bypassing IPv4 firewall) ---
 
 - name: Allow established and related connections (IPv6)
-  ansible.builtin.iptables:
-    ip_version: ipv6
-    chain: INPUT
-    ctstate: ESTABLISHED,RELATED
-    jump: ACCEPT
-    action: insert
-    rule_num: 1
-    comment: hardening-established-v6
+  ansible.builtin.shell: |
+    set -e
+    ip6tables -w 60 -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT -m comment --comment hardening-established-v6 2>/dev/null \
+      || ip6tables -w 60 -I INPUT 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT -m comment --comment hardening-established-v6
+  args:
+    executable: /bin/bash
+  changed_when: true
 
 - name: Allow loopback traffic (IPv6)
-  ansible.builtin.iptables:
-    ip_version: ipv6
-    chain: INPUT
-    in_interface: lo
-    jump: ACCEPT
-    action: insert
-    rule_num: 1
-    comment: hardening-loopback-v6
+  ansible.builtin.shell: |
+    set -e
+    ip6tables -w 60 -C INPUT -i lo -j ACCEPT -m comment --comment hardening-loopback-v6 2>/dev/null \
+      || ip6tables -w 60 -I INPUT 1 -i lo -j ACCEPT -m comment --comment hardening-loopback-v6
+  args:
+    executable: /bin/bash
+  changed_when: true
 
 - name: Set INPUT policy to DROP (IPv6)
-  ansible.builtin.iptables:
-    ip_version: ipv6
-    chain: INPUT
-    policy: DROP
+  ansible.builtin.command: ip6tables -w 60 -P INPUT DROP
+  changed_when: true
 
 - name: Set FORWARD policy to ACCEPT (IPv6)
-  ansible.builtin.iptables:
-    ip_version: ipv6
-    chain: FORWARD
-    policy: ACCEPT
+  ansible.builtin.command: ip6tables -w 60 -P FORWARD ACCEPT
+  changed_when: true
 
 - name: Set OUTPUT policy to ACCEPT (IPv6)
-  ansible.builtin.iptables:
-    ip_version: ipv6
-    chain: OUTPUT
-    policy: ACCEPT
+  ansible.builtin.command: ip6tables -w 60 -P OUTPUT ACCEPT
+  changed_when: true
 
 - name: Persist iptables rules
   ansible.builtin.command: netfilter-persistent save
   when: hardening_persist | bool
   changed_when: true
 
-# Firewall just changed — drop ControlMaster and open a fresh SSH session
-# before any further tasks (fail2ban apt, etc.).
 - name: Reset SSH connection after firewall change
   ansible.builtin.meta: reset_connection
 
