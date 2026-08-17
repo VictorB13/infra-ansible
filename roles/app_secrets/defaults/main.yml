@@ -1,0 +1,10 @@
+---
+# Pull app secrets from AWS SSM (written by Build) into the cluster
+# before ArgoCD syncs the Helm chart (which does not create the Secret).
+
+ssm_prefix: /todo-app
+ssm_postgres_password_param: "{{ ssm_prefix }}/postgres_password"
+ssm_jwt_secret_param: "{{ ssm_prefix }}/jwt_secret"
+aws_region: eu-central-1
+app_namespace: todo
+app_secret_name: todo-app-secrets

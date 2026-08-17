@@ -1,0 +1,56 @@
+---
+- name: Ensure AWS CLI is installed (SSM pull)
+  ansible.builtin.apt:
+    name: awscli
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Read postgres password from SSM
+  ansible.builtin.command: >
+    aws ssm get-parameter
+    --name {{ ssm_postgres_password_param }}
+    --with-decryption
+    --query Parameter.Value
+    --output text
+    --region {{ aws_region }}
+  register: ssm_postgres_password
+  changed_when: false
+  no_log: true
+
+- name: Read JWT secret from SSM
+  ansible.builtin.command: >
+    aws ssm get-parameter
+    --name {{ ssm_jwt_secret_param }}
+    --with-decryption
+    --query Parameter.Value
+    --output text
+    --region {{ aws_region }}
+  register: ssm_jwt_secret
+  changed_when: false
+  no_log: true
+
+- name: Ensure app namespace exists
+  ansible.builtin.command: k3s kubectl create namespace {{ app_namespace }}
+  register: app_ns
+  changed_when: app_ns.rc == 0
+  failed_when: app_ns.rc not in [0, 1]
+
+- name: Upsert Kubernetes Secret from SSM values
+  ansible.builtin.shell: |
+    set -euo pipefail
+    k3s kubectl -n {{ app_namespace }} create secret generic {{ app_secret_name }} \
+      --from-literal=postgres-password='{{ ssm_postgres_password.stdout }}' \
+      --from-literal=secret-key='{{ ssm_jwt_secret.stdout }}' \
+      --dry-run=client -o yaml \
+    | k3s kubectl apply -f -
+  no_log: true
+  changed_when: true
+
+- name: Label Secret as externally managed (not pruned by ArgoCD/Helm)
+  ansible.builtin.command: >
+    k3s kubectl -n {{ app_namespace }} annotate secret {{ app_secret_name }}
+    argocd.argoproj.io/sync-options=Prune=false
+    helm.sh/resource-policy=keep
+    --overwrite
+  changed_when: true

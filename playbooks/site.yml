@@ -7,4 +7,5 @@
     - packages
     - k3s
     - hardening
+    - app_secrets   # SSM → K8s Secret (before ArgoCD syncs the app)
     - argocd
